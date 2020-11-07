@@ -1,0 +1,23 @@
+plugins {
+    id "com.github.johnrengelman.shadow" version "6.1.0"
+    id "application"
+}
+
+application {
+    mainClassName = "Main"
+}
+
+shadowJar {
+    archiveBaseName = "ModSync-1.01"
+    mainClassName = "Main"
+    project.configurations.implementation.canBeResolved = true
+    configurations = [project.configurations.implementation]
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation "commons-codec:commons-codec:1.14"
+}
