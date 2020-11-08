@@ -13,7 +13,7 @@ public class Main {
 	}
 
 	public static void main(String[] args) {
-		JFrame frame = new JFrame("ModSync - Version 1.10 - kernelpanic#6669");
+		JFrame frame = new JFrame("ModSync - Version 1.15 - kernelpanic#6669");
 
 		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		frame.setSize(600,300);

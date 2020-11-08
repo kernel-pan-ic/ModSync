@@ -1,14 +1,14 @@
 import java.awt.*;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.PrintWriter;
-import java.io.StringWriter;
+import java.io.*;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 
 import javax.swing.*;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import jdk.nashorn.internal.parser.JSONParser;
 import org.apache.commons.codec.digest.DigestUtils;
 
 public class CheckAndDownload extends JPanel {
@@ -44,14 +44,12 @@ public class CheckAndDownload extends JPanel {
 			FileOperations.downloadToFile("https://raw.githubusercontent.com/kernel-pan-ic/modpack/main/meta/configs", configsList);
 
 			status.setText("Reading in mods and configs list.");
-			List<String> modsLines = Files.readAllLines(modsList.toPath());
-			List<String> configsLines = Files.readAllLines(configsList.toPath());
-
-			ArrayList<Mod> mods = new ArrayList<>();
-
-			for (String line : modsLines) {
-				mods.add(parseForMod(line));
+			ModsList mods;
+			try (InputStreamReader input = new InputStreamReader(new FileInputStream(modsList))) {
+				Gson gson = new GsonBuilder().create();
+				mods = gson.fromJson(input, ModsList.class);
 			}
+			List<String> configsLines = Files.readAllLines(configsList.toPath());
 
 			status.setText("Checking for mods folder.");
 
@@ -74,8 +72,14 @@ public class CheckAndDownload extends JPanel {
 			status.setText("Syncing mods.");
 
 			for (Mod mod : mods) {
+				System.out.println(mod.getDownload());
 				if (!server || mod.server) {
-					File modFile = new File(modsDir.getAbsolutePath() + File.separator + mod.filename);
+					File modFile;
+					if (mod.filename.contains("/")) {
+						modFile = new File(modsDir.getAbsolutePath() + File.separator + mod.filename.split("/")[0] + File.separator + mod.filename.split("/")[1]);
+					} else {
+						modFile = new File(modsDir.getAbsolutePath() + File.separator + mod.filename);
+					}
 
 					if (!modFile.exists() || !FileOperations.checkHash(mod.hash, modFile)) {
 						if (modFile.exists()) {
@@ -87,15 +91,19 @@ public class CheckAndDownload extends JPanel {
 
 						status.setText("Downloading mod: " + mod.name);
 
-						FileOperations.downloadToFile(mod.download, modFile);
+						FileOperations.downloadToFile(mod.getDownload(), modFile);
 					}
 				}
 			}
 
+			status.setText("Deleting mods not in modpack.");
+
+			//deleteNonMods(modsDir, mods);
+
 			status.setText("Verifying configs.");
 
 			for (String configAndHash : configsLines) {
-				if (configAndHash != null && configAndHash != "") {
+				if (configAndHash != null && !configAndHash.equals("")) {
 					String config = configAndHash.split(" : ")[1];
 					String hash = configAndHash.split(" : ")[0];
 					File configFile = new File(configsDir.getAbsolutePath() + File.separator + config);
@@ -110,7 +118,7 @@ public class CheckAndDownload extends JPanel {
 
 						status.setText("Downloading config: " + config);
 
-						FileOperations.downloadToFile("https://raw.githubusercontent.com/kernel-pan-ic/modpack/master/configs/" + config, configFile);
+						FileOperations.downloadToFile("https://raw.githubusercontent.com/kernel-pan-ic/modpack/main/configs/" + config, configFile);
 					}
 				}
 			}
@@ -122,24 +130,29 @@ public class CheckAndDownload extends JPanel {
 		}
 	}
 
-	private Mod parseForMod(String line) {
-		String[] elements = line.split(" : ");
-
-		String name = elements[0];
-		String filename = elements[1];
-		String hash = elements[2];
-		String download = elements[3];
-		boolean server = elements[4].contains("1");
-		boolean curseforge = elements[5].contains("1");
-
-		return new Mod(name, filename, hash, download, server, curseforge);
-	}
-
 	private void catchExceptions(Exception e) {
 		StringWriter sw = new StringWriter();
 		PrintWriter pw = new PrintWriter(sw);
 		e.printStackTrace(pw);
 		JOptionPane.showMessageDialog(new JFrame("Error"), "Something bad happened! The stack trace will be on the next message box.");
 		JOptionPane.showMessageDialog(new JFrame("Stack trace"), sw.toString());
+	}
+
+	private void deleteNonMods(File file, ArrayList<Mod> mods) {
+		File[] files = file.listFiles();
+		if (files != null) {
+			for (File innerFile : files) {
+				deleteNonMods(innerFile, mods);
+			}
+		}
+		boolean delete = true;
+		for (Mod mod : mods) {
+			if (mod.filename.equals(file.getName())) {
+				delete = false;
+			}
+		}
+		if (delete && !file.isDirectory()) {
+			file.delete();
+		}
 	}
 }

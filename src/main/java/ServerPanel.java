@@ -11,6 +11,7 @@ public class ServerPanel extends JPanel {
 
         JFileChooser fileChooser = new JFileChooser();
         fileChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+        fileChooser.setFileHidingEnabled(false);
 
         JLabel folderLabel = new JLabel("Folder to sync to:");
         add(folderLabel);
