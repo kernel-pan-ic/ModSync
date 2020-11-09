@@ -28,7 +28,9 @@ public class FileOperations {
     }
 
     public static boolean checkHash(String hash, File file) throws Exception {
-        return DigestUtils.sha256Hex(new FileInputStream(file)).equalsIgnoreCase(hash);
+        try (FileInputStream input = new FileInputStream(file)) {
+            return DigestUtils.sha256Hex(input).equalsIgnoreCase(hash);
+        }
     }
 
     public static void extractModpackMetadata(Path zipFile, Path extractDir) throws IOException {

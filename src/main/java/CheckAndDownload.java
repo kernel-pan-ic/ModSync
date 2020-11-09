@@ -154,8 +154,8 @@ public class CheckAndDownload extends JPanel {
 				verifyAndDownload(file, downloadURL, hash);
 			} else {
 				if (!FileOperations.checkHash(hash, file)) {
-					System.out.println("The hash for file " + file.getAbsolutePath() + " doesn't match expected hash. Expected hash is: " + hash
-							+ " when file hash is " + DigestUtils.sha256Hex(new FileInputStream(file)));
+					//System.out.println("The hash for file " + file.getAbsolutePath() + " doesn't match expected hash. Expected hash is: " + hash
+					//		+ " when file hash is " + DigestUtils.sha256Hex(new FileInputStream(file)));
 
 					FileOperations.downloadToFile(downloadURL, file);
 					verifyAndDownload(file, downloadURL, hash);
