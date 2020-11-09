@@ -1,27 +1,37 @@
 import java.awt.*;
 import java.io.*;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 
 import javax.swing.*;
 
+import com.google.common.net.PercentEscaper;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import jdk.nashorn.internal.parser.JSONParser;
 import org.apache.commons.codec.digest.DigestUtils;
 
 public class CheckAndDownload extends JPanel {
 	private File modsDir;
 	private File configsDir;
+	private File syncFolder;
 	
-	private static final File modsList = new File("mods");
-	private static final File configsList = new File("configs");
+	private static File modsList = new File("mods");
+	private static File configsList = new File("configs");
+	private static File deletionList = new File("delete");
 
 	private final JLabel status = new JLabel();
 	private final JProgressBar progress = new JProgressBar();
+
+	private static final Gson gson = new GsonBuilder().create();
 	
 	public CheckAndDownload(File syncFolder) {
+		this.syncFolder = syncFolder;
+
 		modsDir = new File(syncFolder.getAbsolutePath() + File.separator + "mods");
 		configsDir = new File(syncFolder.getAbsolutePath() + File.separator + "config");
 
@@ -37,19 +47,29 @@ public class CheckAndDownload extends JPanel {
 	
 	public void sync(boolean server) {
 		try {
-			status.setText("Downloading mods list.");
-			FileOperations.downloadToFile("https://raw.githubusercontent.com/kernel-pan-ic/modpack/main/meta/mods", modsList);
 
-			status.setText("Downloading configs list.");
-			FileOperations.downloadToFile("https://raw.githubusercontent.com/kernel-pan-ic/modpack/main/meta/configs", configsList);
+			if (Main.debugModsList == null) {
+				status.setText("Downloading mods list.");
+				FileOperations.downloadToFile("https://raw.githubusercontent.com/kernel-pan-ic/modpack/main/meta/mods", modsList);
+
+				status.setText("Downloading configs list.");
+				FileOperations.downloadToFile("https://raw.githubusercontent.com/kernel-pan-ic/modpack/main/meta/configs", configsList);
+
+				status.setText("Downloading deletion list.");
+				FileOperations.downloadToFile("https://raw.githubusercontent.com/kernel-pan-ic/modpack/main/meta/delete", deletionList);
+			} else {
+				modsList = Main.debugModsList;
+				configsList = Main.debugConfigList;
+				deletionList = Main.debugDeletionList;
+			}
 
 			status.setText("Reading in mods and configs list.");
 			ModsList mods;
 			try (InputStreamReader input = new InputStreamReader(new FileInputStream(modsList))) {
-				Gson gson = new GsonBuilder().create();
 				mods = gson.fromJson(input, ModsList.class);
 			}
 			List<String> configsLines = Files.readAllLines(configsList.toPath());
+			List<String> deletionLines = Files.readAllLines(deletionList.toPath());
 
 			status.setText("Checking for mods folder.");
 
@@ -68,35 +88,35 @@ public class CheckAndDownload extends JPanel {
 				}
 				configsDir.mkdir();
 			}
-
-			status.setText("Syncing mods.");
+			status.setText("Syncing modpacks (if any)");
 
 			for (Mod mod : mods) {
-				System.out.println(mod.getDownload());
-				if (!server || mod.server) {
-					File modFile;
-					if (mod.filename.contains("/")) {
-						modFile = new File(modsDir.getAbsolutePath() + File.separator + mod.filename.split("/")[0] + File.separator + mod.filename.split("/")[1]);
-					} else {
-						modFile = new File(modsDir.getAbsolutePath() + File.separator + mod.filename);
-					}
 
-					if (!modFile.exists() || !FileOperations.checkHash(mod.hash, modFile)) {
-						if (modFile.exists()) {
-							System.out.println("The hash for file " + mod + " doesn't match expected hash. Expected hash is: " + mod.hash
-									+ " when file hash is " + DigestUtils.sha256Hex(new FileInputStream(modFile)));
-						}
+				if (mod.type.equals("cursemodpack")) {
+					System.out.println(mod.getDownload());
+					if ((!server && mod.client) || (server && mod.server)) {
+						File modFile = new File(mod.filename);
+						download(modFile, mod.getDownload());
 
-						Files.createDirectories(modFile.toPath().getParent());
+						FileOperations.extractModpackMetadata(modFile.toPath(), new File("extracted").toPath());
 
-						status.setText("Downloading mod: " + mod.name);
-
-						FileOperations.downloadToFile(mod.getDownload(), modFile);
+						installModpack(new File("extracted"));
 					}
 				}
 			}
 
-			status.setText("Deleting mods not in modpack.");
+			status.setText("Syncing mods.");
+
+			for (Mod mod : mods) {
+				if (!mod.type.equals("cursemodpack")) {
+					System.out.println(mod.getDownload());
+					if ((!server && mod.client) || (server && mod.server)) {
+						File modFile = new File(modsDir.getAbsolutePath() + File.separator + mod.filename.replaceAll("/", File.separator));
+
+						verifyAndDownload(modFile, mod.getDownload(), mod.hash);
+					}
+				}
+			}
 
 			//deleteNonMods(modsDir, mods);
 
@@ -108,19 +128,14 @@ public class CheckAndDownload extends JPanel {
 					String hash = configAndHash.split(" : ")[0];
 					File configFile = new File(configsDir.getAbsolutePath() + File.separator + config);
 
-					if (!configFile.exists() || !FileOperations.checkHash(hash, configFile)) {
-						if (configFile.exists()) {
-							System.out.println("The hash for file " + config + " doesn't match expected hash. Expected hash is: " + hash
-									+ " when file hash is " + DigestUtils.sha256Hex(new FileInputStream(configFile)));
-						}
-
-						Files.createDirectories(configFile.toPath().getParent());
-
-						status.setText("Downloading config: " + config);
-
-						FileOperations.downloadToFile("https://raw.githubusercontent.com/kernel-pan-ic/modpack/main/configs/" + config, configFile);
-					}
+					verifyAndDownload(configFile, "https://raw.githubusercontent.com/kernel-pan-ic/modpack/main/configs/" + config, hash);
 				}
+			}
+
+			status.setText("Deleting mods not in modpack.");
+
+			for (String file : deletionLines) {
+				new File(modsDir.getAbsolutePath() + File.separator + file).delete();
 			}
 
 			status.setText("Done!");
@@ -128,6 +143,79 @@ public class CheckAndDownload extends JPanel {
 		} catch (Exception e) {
 			catchExceptions(e);
 		}
+	}
+
+	private void verifyAndDownload(File file, String downloadURL, String hash) {
+		try {
+
+			if (!file.exists()) {
+				makeDirs(file);
+				FileOperations.downloadToFile(downloadURL, file);
+				verifyAndDownload(file, downloadURL, hash);
+			} else {
+				if (!FileOperations.checkHash(hash, file)) {
+					System.out.println("The hash for file " + file.getAbsolutePath() + " doesn't match expected hash. Expected hash is: " + hash
+							+ " when file hash is " + DigestUtils.sha256Hex(new FileInputStream(file)));
+
+					FileOperations.downloadToFile(downloadURL, file);
+					verifyAndDownload(file, downloadURL, hash);
+				}
+			}
+
+		} catch (Exception e) {
+			catchExceptions(e);
+		}
+	}
+
+	private void download(File file, String downloadURL) {
+		try {
+			if (!file.exists()) {
+				makeDirs(file);
+			}
+			FileOperations.downloadToFile(downloadURL, file);
+		} catch (Exception e) {
+			catchExceptions(e);
+		}
+	}
+
+	private void makeDirs(File file) {
+		if (file.getParentFile() != null) {
+			file.getParentFile().mkdirs();
+		}
+	}
+
+	private void installModpack(File extractedDir) {
+		CurseEntriesList manifest = null;
+		try {
+			try (InputStreamReader input = new InputStreamReader(new FileInputStream(extractedDir.getAbsolutePath() + File.separator + "manifest.json"))) {
+				manifest = gson.fromJson(input, CurseEntriesList.class);
+			}
+
+			for (CurseEntriesList.CurseModpackEntry mod : manifest.files) {
+				String URL = FileOperations.resolveModURL(mod.projectID, mod.fileID);
+				String filename = URL.substring(URL.lastIndexOf('/') + 1);
+				URL = URL.substring(0, URL.lastIndexOf('/') + 1);
+
+				download(new File(modsDir + File.separator + filename), URL + new PercentEscaper("", false).escape(filename));
+			}
+
+			Path overridesDir = extractedDir.toPath().resolve(manifest.overrides);
+
+			Files.walk(overridesDir).filter(Files::isRegularFile).forEach(p -> {
+				Path copied = syncFolder.toPath().resolve(overridesDir.relativize(p));
+				try {
+					Files.createDirectories(copied.getParent());
+					Files.copy(p, copied, StandardCopyOption.REPLACE_EXISTING);
+				} catch (IOException e) {
+					throw new UncheckedIOException(e);
+				}
+			});
+
+		} catch (IOException e) {
+			catchExceptions(e);
+		}
+
+
 	}
 
 	private void catchExceptions(Exception e) {
