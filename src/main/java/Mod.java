@@ -28,6 +28,7 @@ public class Mod {
 
             String URL = FileOperations.resolveCurseURL(version);
             filename = URLDecoder.decode(URL.substring(URL.lastIndexOf("/") + 1), StandardCharsets.UTF_8.name());
+            System.out.println(filename);
             return URL;
         //} else if (type.equals("curseforge")) {
 //            String IDs = download.split("/")[0];

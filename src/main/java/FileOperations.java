@@ -4,6 +4,8 @@ import org.apache.commons.codec.digest.DigestUtils;
 import java.io.*;
 import java.net.URL;
 import java.net.URLConnection;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystem;
 import java.nio.file.*;
 import java.util.ArrayList;
@@ -23,6 +25,10 @@ public class FileOperations {
             "Ubuntu Chromium/53.0.2785.143 Chrome/53.0.2785.143 Safari/537.36";
 
     public static void downloadToFile(String URL, File file) throws IOException {
+        String filename = URL.substring(URL.lastIndexOf("/") + 1);
+        URL = URL.substring(0, URL.lastIndexOf("/"));
+        URL += "/" + new PercentEscaper("", false).escape(filename);
+        System.out.println("Download URL:           " + new URL(URL).toString());
         InputStream in = new URL(URL).openStream();
         Files.copy(in, file.toPath(), StandardCopyOption.REPLACE_EXISTING);
     }
