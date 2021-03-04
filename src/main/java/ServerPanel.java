@@ -32,7 +32,7 @@ public class ServerPanel extends JPanel {
         syncButton = new JButton("Sync");
         syncButton.addActionListener(e -> {
             this.syncButton.setEnabled(false);
-            new CheckAndDownload(currentSelection).sync(true);
+            new Thread(new CheckAndDownload(currentSelection, true)).start();
             this.syncButton.setEnabled(true);
         });
         add(syncButton);

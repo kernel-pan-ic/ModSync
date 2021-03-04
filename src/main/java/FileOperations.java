@@ -1,11 +1,11 @@
 import com.google.common.net.PercentEscaper;
 import org.apache.commons.codec.digest.DigestUtils;
 
+import javax.swing.*;
 import java.io.*;
+import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystem;
 import java.nio.file.*;
 import java.util.ArrayList;
@@ -18,19 +18,52 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class FileOperations {
-    private static final String baseURL = "https://minecraft.curseforge.com/projects/";
     private static final String META_URL = "https://addons-ecs.forgesvc.net/api/v2/addon/0/file/%s/download-url";
     private static final String MOD_URL = "https://addons-ecs.forgesvc.net/api/v2/addon/%s/file/%s";
     private static final String USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) " +
             "Ubuntu Chromium/53.0.2785.143 Chrome/53.0.2785.143 Safari/537.36";
 
-    public static void downloadToFile(String URL, File file) throws IOException {
+    public static void downloadToFile(String URL, File file, JProgressBar fileProgress, JLabel fileProgressText) throws IOException {
         String filename = URL.substring(URL.lastIndexOf("/") + 1);
         URL = URL.substring(0, URL.lastIndexOf("/"));
         URL += "/" + new PercentEscaper("", false).escape(filename);
+
+        URL realURL = new URL(URL);
+        int size = getDownloadSize(realURL);
+        fileProgress.setMaximum(size);
+
         System.out.println("Download URL:           " + new URL(URL).toString());
-        InputStream in = new URL(URL).openStream();
-        Files.copy(in, file.toPath(), StandardCopyOption.REPLACE_EXISTING);
+
+
+        try (SizeInputStream in = new SizeInputStream(new URL(URL).openStream(), size);
+             FileOutputStream out = new FileOutputStream(file, false)) {
+            byte[] buffer = new byte[8192];
+            int length = in.read(buffer);
+            while (length != -1) {
+                int progress = size - in.available();
+                fileProgress.setValue(progress);
+                fileProgressText.setText(filename + ": " + progress + " bytes out of " + size);
+
+                out.write(buffer, 0, length);
+                length = in.read(buffer);
+            }
+        }
+    }
+
+    public static int getDownloadSize(URL URL) {
+        HttpURLConnection conn = null;
+        try {
+            conn = (HttpURLConnection) URL.openConnection();
+            conn.setRequestMethod("HEAD");
+            return conn.getContentLength();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        } finally {
+            if (conn != null) {
+                conn.disconnect();
+            }
+        }
+
     }
 
     public static boolean checkHash(String hash, File file) throws Exception {
@@ -50,7 +83,7 @@ public class FileOperations {
                 }
             });
         }
-        try (FileSystem zipFs = FileSystems.newFileSystem(zipFile, (ClassLoader) null)) {
+        try (FileSystem zipFs = FileSystems.newFileSystem(zipFile, null)) {
             List<Path> roots = new ArrayList<>();
             zipFs.getRootDirectories().forEach(roots::add);
 

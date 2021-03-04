@@ -1,62 +1,70 @@
+import com.google.common.net.PercentEscaper;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+
+import javax.swing.*;
 import java.awt.*;
 import java.io.*;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 
-import javax.swing.*;
+public class CheckAndDownload extends JPanel implements Runnable {
+	private final File modsDir;
+	private final File configsDir;
+	private final File syncFolder;
 
-import com.google.common.net.PercentEscaper;
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import org.apache.commons.codec.digest.DigestUtils;
-
-public class CheckAndDownload extends JPanel {
-	private File modsDir;
-	private File configsDir;
-	private File syncFolder;
+	private static Boolean server;
 	
 	private static File modsList = new File("mods");
 	private static File configsList = new File("configs");
 	private static File deletionList = new File("delete");
+
+	private final JPanel progressPanel = new JPanel();
 
 	private final JLabel status = new JLabel();
 	private final JProgressBar progress = new JProgressBar();
 
 	private static final Gson gson = new GsonBuilder().create();
 	
-	public CheckAndDownload(File syncFolder) {
+	public CheckAndDownload(File syncFolder, Boolean server) {
 		this.syncFolder = syncFolder;
+		CheckAndDownload.server = server;
 
 		modsDir = new File(syncFolder.getAbsolutePath() + File.separator + "mods");
 		configsDir = new File(syncFolder.getAbsolutePath() + File.separator + "config");
 
+		this.setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
+		progressPanel.setLayout(new BoxLayout(progressPanel, BoxLayout.Y_AXIS));
+
 		JFrame frame = new JFrame("Status");
 		frame.setMinimumSize(new Dimension(400, 200));
-		frame.setContentPane(this);
+		frame.setLayout(new BorderLayout());
+		frame.add(this, BorderLayout.NORTH);
+		frame.add(progressPanel);
 
 		add(status);
 		add(progress);
 
 		frame.setVisible(true);
 	}
-	
-	public void sync(boolean server) {
+
+	@Override
+	public void run() {
 		try {
 
 			if (Main.debugModsList == null) {
 				status.setText("Downloading mods list.");
-				FileOperations.downloadToFile("https://raw.githubusercontent.com/kernel-pan-ic/modpack/main/meta/mods", modsList);
+				download(modsList, "https://raw.githubusercontent.com/kernel-pan-ic/modpack/main/meta/mods");
 
 				status.setText("Downloading configs list.");
-				FileOperations.downloadToFile("https://raw.githubusercontent.com/kernel-pan-ic/modpack/main/meta/configs", configsList);
+				download(configsList, "https://raw.githubusercontent.com/kernel-pan-ic/modpack/main/meta/configs");
 
 				status.setText("Downloading deletion list.");
-				FileOperations.downloadToFile("https://raw.githubusercontent.com/kernel-pan-ic/modpack/main/meta/delete", deletionList);
+				download(deletionList, "https://raw.githubusercontent.com/kernel-pan-ic/modpack/main/meta/delete");
 			} else {
 				modsList = Main.debugModsList;
 				configsList = Main.debugConfigList;
@@ -90,11 +98,15 @@ public class CheckAndDownload extends JPanel {
 			}
 			status.setText("Syncing modpacks (if any)");
 
+			int modpackCount = mods.getModpackCount();
+			if (modpackCount > 0) {
+				progress.setMaximum(modpackCount);
+			}
 			for (Mod mod : mods) {
-
 				if (mod.type.equals("cursemodpack")) {
 					System.out.println(mod.getDownload());
 					if ((!server && mod.client) || (server && mod.server)) {
+						progress.setValue(mods.indexOf(mod));
 						File modFile = new File(mod.filename);
 						download(modFile, mod.getDownload());
 
@@ -107,10 +119,15 @@ public class CheckAndDownload extends JPanel {
 
 			status.setText("Syncing mods.");
 
+			int modCount = mods.getModCount();
+			if (modCount > 0) {
+				progress.setMaximum(modCount);
+			}
 			for (Mod mod : mods) {
 				if (!mod.type.equals("cursemodpack")) {
 					System.out.println(mod.getDownload());
 					if ((!server && mod.client) || (server && mod.server)) {
+						progress.setValue(mods.indexOf(mod));
 						File modFile = new File(modsDir.getAbsolutePath() + File.separator + mod.filename.replaceAll("/", File.separator));
 
 						verifyAndDownload(modFile, mod.getDownload(), mod.hash);
@@ -141,6 +158,11 @@ public class CheckAndDownload extends JPanel {
 			status.setText("Done!");
 			SwingUtilities.getWindowAncestor(this).dispose();
 		} catch (Exception e) {
+			try {
+				throw e;
+			} catch (IOException | URISyntaxException ioException) {
+				ioException.printStackTrace();
+			}
 			catchExceptions(e);
 		}
 	}
@@ -150,14 +172,14 @@ public class CheckAndDownload extends JPanel {
 
 			if (!file.exists()) {
 				makeDirs(file);
-				FileOperations.downloadToFile(downloadURL, file);
+				download(file, downloadURL);
 				verifyAndDownload(file, downloadURL, hash);
 			} else {
 				if (!FileOperations.checkHash(hash, file)) {
 					//System.out.println("The hash for file " + file.getAbsolutePath() + " doesn't match expected hash. Expected hash is: " + hash
 					//		+ " when file hash is " + DigestUtils.sha256Hex(new FileInputStream(file)));
 
-					FileOperations.downloadToFile(downloadURL, file);
+					download(file, downloadURL);
 					verifyAndDownload(file, downloadURL, hash);
 				}
 			}
@@ -172,7 +194,13 @@ public class CheckAndDownload extends JPanel {
 			if (!file.exists()) {
 				makeDirs(file);
 			}
-			FileOperations.downloadToFile(downloadURL, file);
+			JLabel progressText = new JLabel();
+			JProgressBar progress = new JProgressBar();
+			progressPanel.add(progressText);
+			progressPanel.add(progress);
+			FileOperations.downloadToFile(downloadURL, file, progress, progressText);
+			progressPanel.remove(progressText);
+			progressPanel.remove(progress);
 		} catch (Exception e) {
 			catchExceptions(e);
 		}
@@ -185,7 +213,7 @@ public class CheckAndDownload extends JPanel {
 	}
 
 	private void installModpack(File extractedDir) {
-		CurseEntriesList manifest = null;
+		CurseEntriesList manifest;
 		try {
 			try (InputStreamReader input = new InputStreamReader(new FileInputStream(extractedDir.getAbsolutePath() + File.separator + "manifest.json"))) {
 				manifest = gson.fromJson(input, CurseEntriesList.class);
