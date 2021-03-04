@@ -25,7 +25,7 @@ public class Main {
 			System.out.println("Debug file set to: " + debugDeletionList.getAbsolutePath());
 
 		}
-		JFrame frame = new JFrame("ModSync - Version 1.21 - kernelpanic#6669");
+		JFrame frame = new JFrame("ModSync - Version 1.22 - kernelpanic#6177");
 
 		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		frame.setSize(600,300);
